@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+:root {
+  --background: #050b1a;
+  --foreground: #cbd5e1;
+}
+
+/* ── Base typography ─────────────────────────────────────────────── */
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Clash Display", var(--font-space-grotesk), system-ui, sans-serif;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* ── Gradient text — dark backgrounds (hero) ─────────────────────── */
+.text-gradient {
+  background: linear-gradient(135deg, #93c5fd 0%, #818cf8 55%, #c4b5fd 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Gradient text — light backgrounds (about headings) ─────────── */
+.text-gradient-blue {
+  background: linear-gradient(135deg, #2563eb 0%, #0891b2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Gradient text — dark backgrounds (features/about heading) ───── */
+.text-gradient-light {
+  background: linear-gradient(135deg, #60a5fa 0%, #22d3ee 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Glow pulse for ambient orbs ─────────────────────────────────── */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 0.9; }
+}
+
+.animate-glow {
+  animation: glow-pulse 7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-glow { animation: none; opacity: 0.6; }
+}
+
+/* ── Slow continuous rotation (planet rings) ─────────────────────── */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 30s linear infinite;
+}
+
+/* ── Dropdown entrance ───────────────────────────────────────────── */
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+.dropdown-enter {
+  animation: dropdown-in 0.15s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dropdown-enter { animation: none; }
+}
