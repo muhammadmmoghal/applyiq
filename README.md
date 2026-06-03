@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ApplyIQ
 
-## Getting Started
+ApplyIQ is an AI-powered job search analytics platform that helps users track applications, monitor pipeline progress, and turn job search activity into actionable insights.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- Track job applications by company, role, status, date applied, and job link
+- View application pipeline metrics including total applications, response rate, interviews, and offers
+- Manage application statuses such as Interested, In Progress, Applied, Interview, Offer, and Rejected
+- Add, edit, delete, filter, and sort job applications
+- Import saved jobs from LinkedIn and Handshake through a Chrome extension
+- Display company logos for cleaner application tracking
+- AI-powered insights and Gmail import features in development
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Tech Stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Next.js
+- React
+- TypeScript
+- Supabase
+- Tailwind CSS
+- Chrome Extension
+- Vercel
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Project Status
 
-## Learn More
+ApplyIQ is actively under development. Current features include application tracking, dashboard analytics, job board imports, and status management. Upcoming work includes Gmail integration, AI-powered recommendations, and additional job search automation.
 
-To learn more about Next.js, take a look at the following resources:
+## Roadmap
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- Gmail application import
+- AI-generated job search insights
+- Resume and application strategy recommendations
+- Improved analytics dashboard
+- Production security cleanup
+- Public live deployment
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Live Demo
 
-## Deploy on Vercel
+Coming soon.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Author
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Built by Muhammad Moghal.
