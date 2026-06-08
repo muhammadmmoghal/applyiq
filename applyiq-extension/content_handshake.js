@@ -5,7 +5,47 @@
 
   const SUPABASE_URL      = "https://npighgicwmefjzewzmit.supabase.co";
   const SUPABASE_ANON_KEY = "sb_publishable_WnSKpTKGde0qEa__Hid9ew_JhDBolMu";
-  const USER_ID           = "064c04ce-08eb-4e7c-8f98-7163b68891a6";
+  /* ── Auth ───────────────────────────────────────────────────── */
+  async function getStoredSession() {
+    const d = await new Promise(r => chrome.storage.local.get(
+      ["applyiq_access_token", "applyiq_user_id", "applyiq_expires_at", "applyiq_refresh_token"],
+      r
+    ));
+    const {
+      applyiq_access_token:  accessToken,
+      applyiq_user_id:       userId,
+      applyiq_expires_at:    expiresAt,
+      applyiq_refresh_token: refreshToken,
+    } = d;
+    if (!accessToken || !userId) return null;
+    const now = Math.floor(Date.now() / 1000);
+    if (expiresAt && now > expiresAt - 60) {
+      if (!refreshToken) return null;
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,
+          {
+            method:  "POST",
+            headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+            body:    JSON.stringify({ refresh_token: refreshToken }),
+          }
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!data.access_token || !data.user?.id) return null;
+        await new Promise(r => chrome.storage.local.set({
+          applyiq_access_token:  data.access_token,
+          applyiq_user_id:       data.user.id,
+          applyiq_user_email:    data.user.email || "",
+          applyiq_expires_at:    data.expires_at  || 0,
+          applyiq_refresh_token: data.refresh_token || refreshToken,
+          applyiq_synced_at:     Math.floor(Date.now() / 1000),
+        }, r));
+        return { accessToken: data.access_token, userId: data.user.id };
+      } catch { return null; }
+    }
+    return { accessToken, userId };
+  }
 
   /* ── Toast ──────────────────────────────────────────────────── */
   function showToast(msg, isError = false) {
@@ -62,6 +102,10 @@
 
   /* ── Save (Interested) ──────────────────────────────────────── */
   async function saveJob({ company, role, jobLink, status, companyLogoUrl = null }) {
+    const session = await getStoredSession();
+    if (!session) { showToast("Reconnect ApplyIQ — click the extension icon.", true); return; }
+    const { accessToken, userId } = session;
+    const authHeaders = { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` };
     const encodedLink = encodeURIComponent(jobLink);
     const today       = new Date().toISOString().split("T")[0];
 
@@ -69,8 +113,8 @@
       console.log(`[ApplyIQ Handshake] save - checking existing: ${jobLink}`);
       const chk = await fetch(
         `${SUPABASE_URL}/rest/v1/applications` +
-        `?user_id=eq.${USER_ID}&job_link=eq.${encodedLink}&select=id&limit=1`,
-        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
+        `?user_id=eq.${userId}&job_link=eq.${encodedLink}&select=id&limit=1`,
+        { headers: authHeaders }
       );
       if (!chk.ok) throw new Error(`Check failed: ${chk.status}`);
       const existing = await chk.json();
@@ -80,15 +124,10 @@
         console.log(`[ApplyIQ Handshake] PAYLOAD (update) company: "${company}" role: "${role}" status: "${status}" job_link: "${jobLink}" logo: "${companyLogoUrl ? companyLogoUrl.slice(0, 60) : "null"}"`);
         const upd = await fetch(
           `${SUPABASE_URL}/rest/v1/applications` +
-          `?user_id=eq.${USER_ID}&job_link=eq.${encodedLink}`,
+          `?user_id=eq.${userId}&job_link=eq.${encodedLink}`,
           {
             method:  "PATCH",
-            headers: {
-              apikey:         SUPABASE_ANON_KEY,
-              Authorization:  `Bearer ${SUPABASE_ANON_KEY}`,
-              "Content-Type": "application/json",
-              Prefer:         "return=minimal",
-            },
+            headers: { ...authHeaders, "Content-Type": "application/json", Prefer: "return=minimal" },
             body: JSON.stringify({ company, role, status, date_applied: today, ...(companyLogoUrl ? { company_logo_url: companyLogoUrl } : {}) }),
           }
         );
@@ -104,14 +143,9 @@
         console.log(`[ApplyIQ Handshake] PAYLOAD (insert) company: "${company}" role: "${role}" status: "${status}" job_link: "${jobLink}" logo: "${companyLogoUrl ? companyLogoUrl.slice(0, 60) : "null"}"`);
         const ins = await fetch(`${SUPABASE_URL}/rest/v1/applications`, {
           method:  "POST",
-          headers: {
-            apikey:         SUPABASE_ANON_KEY,
-            Authorization:  `Bearer ${SUPABASE_ANON_KEY}`,
-            "Content-Type": "application/json",
-            Prefer:         "return=minimal",
-          },
+          headers: { ...authHeaders, "Content-Type": "application/json", Prefer: "return=minimal" },
           body: JSON.stringify({
-            user_id: USER_ID, company, role, job_link: jobLink, status, date_applied: today,
+            user_id: userId, company, role, job_link: jobLink, status, date_applied: today,
             company_logo_url: companyLogoUrl ?? null,
           }),
         });
@@ -132,6 +166,10 @@
 
   /* ── Apply (upsert as In Progress) ─────────────────────────── */
   async function applyJob({ company, role, jobLink, companyLogoUrl = null }) {
+    const session = await getStoredSession();
+    if (!session) { showToast("Reconnect ApplyIQ — click the extension icon.", true); return; }
+    const { accessToken, userId } = session;
+    const authHeaders = { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` };
     const jobId        = jobIdFromUrl(jobLink);
     const companyLower = (company || "").toLowerCase();
     const roleLower    = (role    || "").toLowerCase();
@@ -141,8 +179,8 @@
 
     try {
       const listRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/applications?user_id=eq.${USER_ID}&select=id,company,role,job_link,status`,
-        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
+        `${SUPABASE_URL}/rest/v1/applications?user_id=eq.${userId}&select=id,company,role,job_link,status`,
+        { headers: authHeaders }
       );
       if (!listRes.ok) throw new Error(`List failed: ${listRes.status}`);
       const rows = await listRes.json();
@@ -173,12 +211,7 @@
           `${SUPABASE_URL}/rest/v1/applications?id=eq.${match.id}`,
           {
             method:  "PATCH",
-            headers: {
-              apikey:         SUPABASE_ANON_KEY,
-              Authorization:  `Bearer ${SUPABASE_ANON_KEY}`,
-              "Content-Type": "application/json",
-              Prefer:         "return=minimal",
-            },
+            headers: { ...authHeaders, "Content-Type": "application/json", Prefer: "return=minimal" },
             body: JSON.stringify({ status: "In Progress", date_applied: today, ...(companyLogoUrl ? { company_logo_url: companyLogoUrl } : {}) }),
           }
         );
@@ -196,14 +229,9 @@
         console.log(`[ApplyIQ Handshake] PAYLOAD (apply insert) company: "${company}" role: "${role}" status: "In Progress" job_link: "${jobLink}" logo: "${companyLogoUrl ? companyLogoUrl.slice(0, 60) : "null"}"`);
         const ins = await fetch(`${SUPABASE_URL}/rest/v1/applications`, {
           method:  "POST",
-          headers: {
-            apikey:         SUPABASE_ANON_KEY,
-            Authorization:  `Bearer ${SUPABASE_ANON_KEY}`,
-            "Content-Type": "application/json",
-            Prefer:         "return=minimal",
-          },
+          headers: { ...authHeaders, "Content-Type": "application/json", Prefer: "return=minimal" },
           body: JSON.stringify({
-            user_id: USER_ID, company, role, job_link: jobLink,
+            user_id: userId, company, role, job_link: jobLink,
             status: "In Progress", date_applied: today,
             company_logo_url: companyLogoUrl ?? null,
           }),
@@ -225,6 +253,10 @@
 
   /* ── Delete (unsave / unfavorite) ───────────────────────────── */
   async function deleteJob({ jobLink: rawLink, company, role }) {
+    const session = await getStoredSession();
+    if (!session) { showToast("Reconnect ApplyIQ — click the extension icon.", true); return; }
+    const { accessToken, userId } = session;
+    const authHeaders = { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${accessToken}` };
     const jobLink      = normalizeHandshakeJobLink(rawLink);
     const jobId        = jobIdFromUrl(rawLink);
     const companyLower = (company || "").toLowerCase();
@@ -238,8 +270,8 @@
 
     try {
       const listRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/applications?user_id=eq.${USER_ID}&select=id,company,role,job_link,status`,
-        { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }
+        `${SUPABASE_URL}/rest/v1/applications?user_id=eq.${userId}&select=id,company,role,job_link,status`,
+        { headers: authHeaders }
       );
       if (!listRes.ok) throw new Error(`List failed: ${listRes.status}`);
       const rows = await listRes.json();
@@ -278,11 +310,7 @@
         `${SUPABASE_URL}/rest/v1/applications?id=eq.${match.id}`,
         {
           method:  "DELETE",
-          headers: {
-            apikey:        SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-            Prefer:        "return=representation",
-          },
+          headers: { ...authHeaders, Prefer: "return=representation" },
         }
       );
 

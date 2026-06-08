@@ -1,12 +1,20 @@
-/* ── Supabase config ──────────────────────────────────────────── */
+/* ── Config ───────────────────────────────────────────────────── */
 const SUPABASE_URL      = "https://npighgicwmefjzewzmit.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_WnSKpTKGde0qEa__Hid9ew_JhDBolMu";
+// Supabase JS SDK v2 localStorage key (project-specific)
+const SB_STORAGE_KEY    = "sb-npighgicwmefjzewzmit-auth-token";
 
-// Temporary: replace with your Supabase user ID from
-// https://supabase.com/dashboard → Authentication → Users → copy your user's ID
-const HARDCODED_USER_ID = "064c04ce-08eb-4e7c-8f98-7163b68891a6";
+const SESSION_KEYS = [
+  "applyiq_access_token", "applyiq_user_id",      "applyiq_user_email",
+  "applyiq_expires_at",   "applyiq_refresh_token", "applyiq_domain",
+  "applyiq_synced_at",
+];
 
 /* ── DOM refs ─────────────────────────────────────────────────── */
+const authDot       = document.getElementById("auth-dot");
+const authLabel     = document.getElementById("auth-label");
+const connectBtn    = document.getElementById("connect-btn");
+const disconnectBtn = document.getElementById("disconnect-btn");
 const formView      = document.getElementById("form-view");
 const successView   = document.getElementById("success-view");
 const companyInput  = document.getElementById("company");
@@ -19,10 +27,250 @@ const successCompEl = document.getElementById("success-company");
 
 let currentUrl = "";
 
+/* ── Storage helpers ──────────────────────────────────────────── */
+function storageGet(keys) {
+  return new Promise(r => chrome.storage.local.get(keys, r));
+}
+
+async function storeSession(session, domain) {
+  const data = {
+    applyiq_access_token: session.access_token,
+    applyiq_user_id:      session.user_id,
+    applyiq_user_email:   session.email,
+    applyiq_expires_at:   session.expires_at,
+    applyiq_domain:       domain,
+    applyiq_synced_at:    Math.floor(Date.now() / 1000),
+  };
+  if (session.refresh_token) data.applyiq_refresh_token = session.refresh_token;
+  await chrome.storage.local.set(data);
+}
+
+async function clearSession() {
+  await chrome.storage.local.remove(SESSION_KEYS);
+}
+
+// Silently refreshes an expired access token using the stored refresh token.
+// Stores the new session and returns it, or null if refresh fails.
+async function refreshStoredSession() {
+  const { applyiq_refresh_token: refreshToken, applyiq_domain: domain }
+    = await storageGet(["applyiq_refresh_token", "applyiq_domain"]);
+  if (!refreshToken) return null;
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,
+      {
+        method:  "POST",
+        headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+        body:    JSON.stringify({ refresh_token: refreshToken }),
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.access_token || !data.user?.id) return null;
+    const refreshed = {
+      access_token:  data.access_token,
+      refresh_token: data.refresh_token || refreshToken,
+      user_id:       data.user.id,
+      email:         data.user.email || "",
+      expires_at:    data.expires_at  || 0,
+    };
+    await storeSession(refreshed, domain);
+    return {
+      accessToken: refreshed.access_token,
+      userId:      refreshed.user_id,
+      email:       refreshed.email,
+      domain,
+      syncedAt:    Math.floor(Date.now() / 1000),
+    };
+  } catch { return null; }
+}
+
+// Returns the valid stored session, or null if absent/unrecoverable.
+// Silently refreshes via refresh_token if the access token is near expiry.
+async function getStoredSession() {
+  const d = await storageGet(SESSION_KEYS);
+  const {
+    applyiq_access_token: accessToken,
+    applyiq_user_id:      userId,
+    applyiq_expires_at:   expiresAt,
+    applyiq_user_email:   email,
+    applyiq_domain:       domain,
+    applyiq_synced_at:    syncedAt,
+  } = d;
+  if (!accessToken || !userId) return null;
+  if (expiresAt && Math.floor(Date.now() / 1000) > expiresAt - 60) {
+    return await refreshStoredSession();
+  }
+  return { accessToken, userId, email, domain, syncedAt };
+}
+
+/* ── Tab inspection ───────────────────────────────────────────── */
+function getOrigin(url) {
+  try { return new URL(url).origin; } catch { return null; }
+}
+
+// Injects into the given tab and reads the Supabase session from localStorage.
+//
+// Returns { keyExists: boolean|null, session: object|null }
+//   keyExists = true  → page loaded, our Supabase key present (ApplyIQ app)
+//   keyExists = false → page loaded, key absent (SDK removed it → signed out)
+//   keyExists = null  → page still loading; SDK may not have initialised yet
+//   session   = {...} → valid session object (only when keyExists=true)
+//
+// Supabase SDK v2 calls localStorage.removeItem() on signOut(), so a fully
+// loaded page with no key is a reliable sign-out signal. A page that is still
+// loading is not — the key may appear once the SDK initialises.
+async function readSessionFromTab(tabId) {
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (key) => {
+      try {
+        // Page is still bootstrapping — SDK may not have written the key yet.
+        if (document.readyState === "loading") return { keyExists: null, session: null };
+        const raw = localStorage.getItem(key);
+        if (raw === null) return { keyExists: false, session: null };
+        const s = JSON.parse(raw);
+        if (!s?.access_token || !s?.user?.id) return { keyExists: true, session: null };
+        return {
+          keyExists: true,
+          session: {
+            access_token:  s.access_token,
+            refresh_token: s.refresh_token || null,
+            user_id:       s.user.id,
+            email:         s.user.email || "",
+            expires_at:    s.expires_at  || 0,
+          },
+        };
+      } catch { return { keyExists: null, session: null }; }
+    },
+    args: [SB_STORAGE_KEY],
+  });
+  return result?.result ?? { keyExists: null, session: null };
+}
+
+/* ── Auth UI ──────────────────────────────────────────────────── */
+function setAuthUI(state, label) {
+  // state: "checking" | "ok" | "disconnected"
+  authDot.className = "auth-dot auth-dot--" + (
+    state === "ok"   ? "ok"      :
+    state === "checking" ? "unknown" : "error"
+  );
+  authLabel.textContent = label;
+
+  const isOk = state === "ok";
+  connectBtn.textContent = isOk ? "Reconnect" : "Connect";
+  connectBtn.disabled    = false;
+  disconnectBtn.classList.toggle("hidden", !isOk);
+  saveBtn.disabled       = !isOk;
+}
+
+/* ── Auto-sync on popup open ──────────────────────────────────── */
+// Primary source of truth is chrome.storage.local.
+// Only syncs from the active tab when it is confirmed to be the ApplyIQ app
+// (active origin matches the previously stored domain). All other cases fall
+// back to stored session so the extension keeps working with the tab closed.
+async function autoSyncOnOpen() {
+  setAuthUI("checking", "Checking…");
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const activeOrigin = tab?.url?.startsWith("http") ? getOrigin(tab.url) : null;
+    const { applyiq_domain: storedDomain, applyiq_user_id: prevUserId }
+      = await storageGet(["applyiq_domain", "applyiq_user_id"]);
+
+    const onApplyIQTab = !!(tab?.id && activeOrigin && storedDomain
+                            && activeOrigin === storedDomain);
+
+    if (onApplyIQTab) {
+      // Active tab IS the known ApplyIQ app — sync from it to catch
+      // sign-outs and account switches immediately.
+      const { keyExists, session } = await readSessionFromTab(tab.id);
+      if (keyExists === true && session) {
+        // Confirmed signed in — update stored session (handles account switches).
+        if (prevUserId && prevUserId !== session.user_id) {
+          console.log("[ApplyIQ ext] Account switch detected — updating stored session");
+        }
+        await storeSession(session, activeOrigin);
+        setAuthUI("ok", `Connected as ${session.email || session.user_id}`);
+        return;
+      }
+      if (keyExists === true && !session) {
+        // Key present but empty/invalid → confirmed sign-out.
+        await clearSession();
+        setAuthUI("disconnected", "Signed out — open ApplyIQ to reconnect");
+        return;
+      }
+      if (keyExists === false) {
+        // Page fully loaded, key absent → Supabase SDK removed it on sign-out.
+        await clearSession();
+        setAuthUI("disconnected", "Signed out — open ApplyIQ to reconnect");
+        return;
+      }
+      // keyExists === null: page is still loading, SDK not yet initialised —
+      // fall through to stored session rather than incorrectly clearing it.
+    }
+
+    // ApplyIQ tab is not active (or not yet loaded) — trust stored session.
+    // getStoredSession() will silently refresh the token if it is near expiry.
+    await showStoredSession();
+  } catch {
+    await showStoredSession();
+  }
+}
+
+async function showStoredSession() {
+  const session = await getStoredSession();
+  if (!session) {
+    setAuthUI("disconnected", "Not connected — open ApplyIQ, then click Connect");
+    return;
+  }
+  const minsAgo   = session.syncedAt
+    ? Math.round((Date.now() / 1000 - session.syncedAt) / 60) : null;
+  const staleHint = minsAgo !== null && minsAgo > 30
+    ? ` · synced ${minsAgo}m ago` : "";
+  setAuthUI("ok", `Connected as ${session.email || session.userId}${staleHint}`);
+}
+
+/* ── Connect / Reconnect ──────────────────────────────────────── */
+connectBtn.addEventListener("click", async () => {
+  connectBtn.disabled    = true;
+  connectBtn.textContent = "Syncing…";
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) throw new Error("no active tab");
+
+    const { keyExists, session } = await readSessionFromTab(tab.id);
+    const origin = getOrigin(tab.url);
+
+    if (!keyExists) {
+      setAuthUI("disconnected", "Not on ApplyIQ — open your dashboard first");
+      return;
+    }
+    if (!session) {
+      await clearSession();
+      setAuthUI("disconnected", "Not signed in — sign in to ApplyIQ first");
+      return;
+    }
+
+    await storeSession(session, origin);
+    setAuthUI("ok", `Connected as ${session.email || session.user_id}`);
+
+  } catch {
+    setAuthUI("disconnected", "Sync failed — open ApplyIQ and try again");
+  } finally {
+    connectBtn.disabled = false;
+  }
+});
+
+/* ── Disconnect ───────────────────────────────────────────────── */
+disconnectBtn.addEventListener("click", async () => {
+  await clearSession();
+  setAuthUI("disconnected", "Disconnected");
+});
+
 /* ── URL normalisation ────────────────────────────────────────── */
 function normalizeJobLink(url) {
   if (!url) return url;
-  // LinkedIn: always store as /jobs/view/{id}/
   const pathMatch = url.match(/\/jobs\/view\/(\d+)/);
   if (pathMatch) return `https://www.linkedin.com/jobs/view/${pathMatch[1]}/`;
   try {
@@ -34,6 +282,7 @@ function normalizeJobLink(url) {
 
 /* ── Init ─────────────────────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", async () => {
+  await autoSyncOnOpen();
   await loadTabInfo();
 });
 
@@ -74,15 +323,13 @@ async function loadTabInfo() {
     urlDisplay.textContent = truncate(tab.url, 44);
     urlDisplay.title       = tab.url;
 
-  } catch (err) {
+  } catch {
     showPageError("Couldn't read this page. Try refreshing.");
   }
 }
 
-// Injected into the LinkedIn tab via chrome.scripting.executeScript —
-// must be fully self-contained (no references to outer scope).
+// Injected into the LinkedIn tab — must be fully self-contained.
 function extractLinkedInJobInfo() {
-  /* ── Helpers ────────────────────────────────────────────────── */
   const SKIP_LINES = [
     "linkedin", "show more", "show less", "see more", "see all", "see all jobs",
     "save", "saved", "unsave", "follow", "connect", "message",
@@ -126,7 +373,6 @@ function extractLinkedInJobInfo() {
     return true;
   }
 
-  /* ── Tier 1: selected job card (currentJobId → aria → style) ── */
   function findSelectedCard() {
     const jobId = new URLSearchParams(location.search).get("currentJobId");
     if (jobId) {
@@ -161,71 +407,47 @@ function extractLinkedInJobInfo() {
   let cardRole = null, cardCompany = null;
   const card = findSelectedCard();
   if (card) {
-    const rawLines = (card.innerText || "").split("\n");
-    console.log(`[ApplyIQ popup] selected card raw lines: ${JSON.stringify(rawLines.slice(0, 12))}`);
-    const allLines = rawLines
+    const allLines = (card.innerText || "").split("\n")
       .map(l => l.replace(/[\d,.]+[KMBkmb]?\s*followers?/gi, "").replace(/\s+/g, " ").trim())
       .filter(l => l.length > 1)
       .filter((l, i, arr) => i === 0 || l !== arr[i - 1]);
-    // Role = first line (no noise filter — titles like "X Intern - Onsite in Dallas, TX" are valid)
     cardRole    = allLines[0] || null;
-    // Company = first subsequent line that passes the noise filter
     cardCompany = allLines.slice(1).find(isCardLineGood) || null;
-    console.log(`[ApplyIQ popup] selected card role: "${cardRole}" company: "${cardCompany}"`);
-  } else {
-    console.log("[ApplyIQ popup] no selected card found");
   }
 
-  /* ── Right panel: viewport-position-based detection ─────────── */
   const isSearchPage = location.pathname.includes("/jobs/search") ||
                        new URLSearchParams(location.search).has("currentJobId");
   const minX = isSearchPage ? window.innerWidth * 0.38 : 0;
 
-  // Role: topmost visible heading in right area
   const headings = [...document.querySelectorAll('h1, h2, h3, [role="heading"]')]
     .filter(el => {
       const r = el.getBoundingClientRect();
-      const t = el.textContent.trim();
-      return r.width > 0 && r.height > 0 && r.left >= minX && t.length > 3;
+      return r.width > 0 && r.height > 0 && r.left >= minX && el.textContent.trim().length > 3;
     })
     .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
 
   const titleEl   = headings[0] || null;
   const panelRole = titleEl?.textContent?.trim() || null;
-  console.log(`[ApplyIQ popup] right panel role: "${panelRole}"`);
 
   function isValidRole(r) {
     if (!r || r.length < 2) return false;
     return !/match|profile|help|recommend|people you can|reach out/i.test(r);
   }
-  const role = (isValidRole(cardRole)    ? cardRole    : null) ||
-               (isValidRole(panelRole)   ? panelRole   : null) ||
+  const role = (isValidRole(cardRole)  ? cardRole  : null) ||
+               (isValidRole(panelRole) ? panelRole : null) ||
                cardRole || null;
-  console.log(`[ApplyIQ popup] role chosen: "${role}"`);
 
-  // Company: topmost visible /company/ link in right area
   let company = cardCompany || null;
   if (!company) {
     const compLinks = [...document.querySelectorAll('a[href*="/company/"]')]
-      .filter(a => {
-        const r = a.getBoundingClientRect();
-        return r.width > 0 && r.height > 0 && r.left >= minX;
-      })
+      .filter(a => { const r = a.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.left >= minX; })
       .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
-
-    console.log(`[ApplyIQ popup] right panel /company/ links: ${compLinks.length}`);
     for (const a of compLinks) {
       const txt = cleanText(a.textContent);
-      console.log(`[ApplyIQ popup] /company/ link: "${txt}" | good: ${isGoodCompany(txt)}`);
-      if (isGoodCompany(txt)) {
-        company = txt;
-        console.log(`[ApplyIQ popup] company SELECTED from /company/ link: "${company}"`);
-        break;
-      }
+      if (isGoodCompany(txt)) { company = txt; break; }
     }
   }
 
-  // Fallback: leaf text elements directly above the title
   if (!company && titleEl) {
     const titleRect = titleEl.getBoundingClientRect();
     const aboveEls  = [...document.querySelectorAll("span, a, strong")]
@@ -242,21 +464,22 @@ function extractLinkedInJobInfo() {
       });
     for (const el of aboveEls) {
       const txt = cleanText(el.textContent);
-      if (isGoodCompany(txt)) {
-        company = txt;
-        console.log(`[ApplyIQ popup] company SELECTED from above title: "${company}"`);
-        break;
-      }
+      if (isGoodCompany(txt)) { company = txt; break; }
     }
   }
 
-  console.log(`[ApplyIQ popup] FINAL: company="${company}" role="${role}"`);
   return { role, company: company ?? null };
 }
 
 /* ── Save → Supabase ──────────────────────────────────────────── */
 saveBtn.addEventListener("click", async () => {
   if (!currentUrl) return;
+
+  const session = await getStoredSession();
+  if (!session) {
+    showSaveError("Not connected to ApplyIQ. Click Reconnect above.");
+    return;
+  }
 
   const company = companyInput.value.trim() || "Unknown Company";
   const role    = roleInput.value.trim()    || "Job Opening";
@@ -269,12 +492,12 @@ saveBtn.addEventListener("click", async () => {
       method: "POST",
       headers: {
         "apikey":        SUPABASE_ANON_KEY,
-        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        "Authorization": `Bearer ${session.accessToken}`,
         "Content-Type":  "application/json",
         "Prefer":        "return=minimal",
       },
       body: JSON.stringify({
-        user_id:      HARDCODED_USER_ID,
+        user_id:      session.userId,
         company,
         role,
         job_link:     currentUrl,
@@ -289,7 +512,7 @@ saveBtn.addEventListener("click", async () => {
       try {
         const parsed = JSON.parse(body);
         reason = parsed.message || parsed.error || reason;
-      } catch { /* not JSON, use status */ }
+      } catch { /* not JSON */ }
       throw new Error(reason);
     }
 
@@ -321,7 +544,6 @@ function setSaving(on) {
        Save to ApplyIQ`;
 }
 
-// Fatal page error — disables form entirely (bad URL, chrome:// page, etc.)
 function showPageError(msg) {
   pageError.textContent = msg;
   pageError.classList.remove("hidden");
@@ -330,7 +552,6 @@ function showPageError(msg) {
   roleInput.disabled    = true;
 }
 
-// Recoverable save error — keeps form open so user can retry
 function showSaveError(msg) {
   pageError.textContent = `Save failed: ${msg}`;
   pageError.classList.remove("hidden");
@@ -345,7 +566,6 @@ function showSuccess(company) {
 
 /* ── Extraction helpers ───────────────────────────────────────── */
 
-// jobs.stripe.com → Stripe
 function extractCompany(hostname) {
   const clean = hostname.replace(/^www\./, "");
   const parts = clean.split(".");
@@ -353,7 +573,6 @@ function extractCompany(hostname) {
   return capitalize(root);
 }
 
-// "Senior Engineer | Stripe Careers" → "Senior Engineer"
 function cleanTitle(title) {
   return title
     .replace(/\s*[|\-–—]\s*(.*careers|.*jobs|.*hiring|.*greenhouse|.*lever|.*workday|.*linkedin|.*indeed).*$/i, "")
