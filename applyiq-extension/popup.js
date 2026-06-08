@@ -186,9 +186,6 @@ async function autoSyncOnOpen() {
       const { keyExists, session } = await readSessionFromTab(tab.id);
       if (keyExists === true && session) {
         // Confirmed signed in — update stored session (handles account switches).
-        if (prevUserId && prevUserId !== session.user_id) {
-          console.log("[ApplyIQ ext] Account switch detected — updating stored session");
-        }
         await storeSession(session, activeOrigin);
         setAuthUI("ok", `Connected as ${session.email || session.user_id}`);
         return;

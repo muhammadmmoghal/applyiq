@@ -97,7 +97,6 @@
 
     try {
       // ── Check whether this job already exists in Supabase ──────
-      console.log(`[ApplyIQ] checking existing job: ${jobLink}`);
       const chk = await fetch(
         `${SUPABASE_URL}/rest/v1/applications` +
         `?user_id=eq.${userId}&job_link=eq.${encodedLink}&select=id&limit=1`,
@@ -106,11 +105,9 @@
 
       if (!chk.ok) throw new Error(`Check failed: ${chk.status}`);
       const existing = await chk.json();
-      console.log(`[ApplyIQ] existing job found: ${existing.length > 0}`);
 
       if (existing.length > 0) {
         // ── UPDATE existing row ───────────────────────────────────
-        console.log(`[ApplyIQ] updating existing job…`);
         const upd = await fetch(
           `${SUPABASE_URL}/rest/v1/applications` +
           `?user_id=eq.${userId}&job_link=eq.${encodedLink}`,
@@ -121,7 +118,6 @@
           }
         );
         if (upd.ok) {
-          console.log(`[ApplyIQ] updated existing job: ${company} — ${status}`);
           showToast("Already saved in ApplyIQ");
         } else {
           const msg = await upd.text();
@@ -130,7 +126,6 @@
         }
       } else {
         // ── INSERT new row ────────────────────────────────────────
-        console.log(`[ApplyIQ] inserting new job…`);
         const ins = await fetch(`${SUPABASE_URL}/rest/v1/applications`, {
           method:  "POST",
           headers: { ...authHeaders, "Content-Type": "application/json", Prefer: "return=minimal" },
@@ -140,7 +135,6 @@
           }),
         });
         if (ins.ok) {
-          console.log(`[ApplyIQ] inserted new job: ${company} — ${status}`);
           showToast("Saved to ApplyIQ");
         } else {
           const msg = await ins.text();
@@ -166,7 +160,6 @@
     const roleLower    = (role    || "").toLowerCase();
     const today        = new Date().toISOString().split("T")[0];
 
-    console.log(`[ApplyIQ] apply - checking for existing row, jobLink: ${jobLink}`);
 
     try {
       // Fetch all rows — exact-match on job_link fails when URL formats differ
@@ -177,7 +170,6 @@
       if (!listRes.ok) throw new Error(`List failed: ${listRes.status}`);
       const rows = await listRes.json();
 
-      console.log(`[ApplyIQ] apply - existing row found: ${rows.length > 0} (${rows.length} total rows)`);
 
       // Same priority matching as deleteJob
       let match       = jobId ? rows.find(r => (r.job_link || "").includes(jobId)) : null;
@@ -198,7 +190,6 @@
 
       if (match) {
         const prevStatus = match.status;
-        console.log(`[ApplyIQ] apply - existingRow: true, previous status: "${prevStatus}" (${matchReason}): id=${match.id}`);
         // Update only status — keep company, role, job_link as stored
         const upd = await fetch(
           `${SUPABASE_URL}/rest/v1/applications?id=eq.${match.id}`,
@@ -210,7 +201,6 @@
         );
         if (upd.ok) {
           const toast = prevStatus === "In Progress" ? "Already saved in ApplyIQ" : "Updated to In Progress";
-          console.log(`[ApplyIQ] apply - updated existing job to In Progress: id=${match.id} | toast: "${toast}"`);
           showToast(toast);
         } else {
           const msg = await upd.text();
@@ -218,7 +208,6 @@
           showToast("Something went wrong. Try again.", true);
         }
       } else {
-        console.log(`[ApplyIQ] apply - existingRow: false, inserting new In Progress job`);
         const ins = await fetch(`${SUPABASE_URL}/rest/v1/applications`, {
           method:  "POST",
           headers: { ...authHeaders, "Content-Type": "application/json", Prefer: "return=minimal" },
@@ -229,7 +218,6 @@
           }),
         });
         if (ins.ok) {
-          console.log(`[ApplyIQ] apply - existingRow: false, inserted new In Progress job: ${company} | toast: "Saved to ApplyIQ"`);
           showToast("Saved to ApplyIQ");
         } else {
           const msg = await ins.text();
@@ -256,11 +244,6 @@
     const companyLower = (company || "").toLowerCase();
     const roleLower    = (role    || "").toLowerCase();
 
-    console.log(`[ApplyIQ] unsave - raw URL: ${rawLink}`);
-    console.log(`[ApplyIQ] unsave - normalized URL: ${jobLink}`);
-    console.log(`[ApplyIQ] unsave - jobId: ${jobId}`);
-    console.log(`[ApplyIQ] unsave - extracted company: "${company}"`);
-    console.log(`[ApplyIQ] unsave - extracted role: "${role}"`);
 
     try {
       // ── Fetch all rows for this user ──────────────────────────────────────
@@ -271,9 +254,7 @@
       if (!listRes.ok) throw new Error(`List failed: ${listRes.status}`);
       const rows = await listRes.json();
 
-      console.log(`[ApplyIQ] fetched rows (${rows.length}):`);
       rows.forEach(r =>
-        console.log(`  id=${r.id} company="${r.company}" role="${r.role}" job_link="${r.job_link}" status="${r.status}"`)
       );
 
       // ── Match by priority ─────────────────────────────────────────────────
@@ -297,12 +278,10 @@
       }
 
       if (!match) {
-        console.log(`[ApplyIQ] no matching row — jobId=${jobId} company="${company}" role="${role}"`);
         showToast("Removed from ApplyIQ");
         return;
       }
 
-      console.log(`[ApplyIQ] matched row (${matchReason}): id=${match.id} job_link="${match.job_link}"`);
 
       // ── Delete by primary key ─────────────────────────────────────────────
       const delRes = await fetch(
@@ -315,12 +294,9 @@
 
       if (delRes.ok) {
         const deleted = await delRes.json();
-        console.log(`[ApplyIQ] delete response rows: ${deleted.length}`);
-        console.log(`[ApplyIQ] final result: ${deleted.length > 0 ? "REMOVED" : "NOT FOUND"}`);
         if (deleted.length > 0) {
           showToast("Removed from ApplyIQ");
         } else {
-          console.log(`[ApplyIQ] delete returned 0 rows — id=${match.id}`);
           showToast("Removed from ApplyIQ");
         }
       } else {
@@ -422,7 +398,6 @@
         if (img) {
           const url = imgUrl(img);
           if (url) {
-            console.log(`[ApplyIQ] logo source: selector "${sel}": ${url.slice(0, 80)}`);
             return url;
           }
         }
@@ -444,7 +419,6 @@
           if (isLogoCandidate(img, minX)) {
             const url = imgUrl(img);
             if (url) {
-              console.log(`[ApplyIQ] logo source: near /company/ link: ${url.slice(0, 80)}`);
               return url;
             }
           }
@@ -460,12 +434,10 @@
     if (imgs[0]) {
       const url = imgUrl(imgs[0]);
       if (url) {
-        console.log(`[ApplyIQ] logo source: viewport scan: ${url.slice(0, 80)}`);
         return url;
       }
     }
 
-    console.log("[ApplyIQ] logo: not found (null)");
     return null;
   }
 
@@ -486,7 +458,6 @@
       if (anchor) {
         const card = anchor.closest("li") || anchor.parentElement;
         if (card && card.innerText.trim().length > 10) {
-          console.log(`[ApplyIQ] card found via jobId=${jobId}`);
           return card;
         }
       }
@@ -498,7 +469,6 @@
       let node = sel;
       for (let i = 0; i < 6; i++) {
         if (node.innerText && node.innerText.trim().split("\n").filter(Boolean).length >= 2) {
-          console.log(`[ApplyIQ] card found via aria-selected (walked ${i} levels)`);
           return node;
         }
         node = node.parentElement;
@@ -511,12 +481,10 @@
     for (const li of lis) {
       const bg = getComputedStyle(li).backgroundColor;
       if (bg && !/rgba?\(0,\s*0,\s*0,\s*0\)|^transparent$/.test(bg)) {
-        console.log(`[ApplyIQ] card found via background style: ${bg}`);
         return li;
       }
     }
 
-    console.log("[ApplyIQ] no selected card found");
     return null;
   }
 
@@ -549,7 +517,6 @@
     if (!card) return null;
 
     const rawLines = (card.innerText || "").split("\n");
-    console.log(`[ApplyIQ] selected card raw lines: ${JSON.stringify(rawLines.slice(0, 12))}`);
 
     // Strip followers/whitespace but do NOT apply isCardLineGood here —
     // role titles like "BI Developer Intern - Onsite in Dallas, TX" would be
@@ -569,15 +536,12 @@
     // Company = first subsequent line that passes the noise filter
     const company = allLines.slice(1).find(isCardLineGood) || null;
 
-    console.log(`[ApplyIQ] selected card role: "${role}"`);
-    console.log(`[ApplyIQ] selected card company: "${company}"`);
 
     return { role, company };
   }
 
   /* ── DOM extraction ─────────────────────────────────────────── */
   function extractJobInfo() {
-    console.log("[ApplyIQ] === extractJobInfo START ===");
 
     // ── Tier 1: selected job card (left panel) ─────────────────
     const cardResult = extractLinkedInFromSelectedCard();
@@ -600,7 +564,6 @@
 
     const titleEl   = headings[0] || null;
     const panelRole = titleEl?.textContent?.trim() || null;
-    console.log(`[ApplyIQ] right panel role: "${panelRole}"`);
 
     // Card role is primary; right panel heading is fallback only.
     // Reject any role that is UI copy rather than an actual job title.
@@ -611,7 +574,6 @@
     const role = (isValidRole(cardResult?.role) ? cardResult.role  : null) ||
                  (isValidRole(panelRole)         ? panelRole        : null) ||
                  cardResult?.role || "Job Opening";
-    console.log(`[ApplyIQ] role chosen: "${role}"`);
 
     // ── Right panel company: topmost visible /company/ link in right area ─
     if (!company) {
@@ -622,13 +584,10 @@
         })
         .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
 
-      console.log(`[ApplyIQ] right panel /company/ links found: ${compLinks.length}`);
       for (const a of compLinks) {
         const txt = cleanText(a.textContent);
-        console.log(`[ApplyIQ] /company/ link: "${txt}" left=${Math.round(a.getBoundingClientRect().left)} | good: ${isGoodCompany(txt)}`);
         if (isGoodCompany(txt)) {
           company = txt;
-          console.log(`[ApplyIQ] company SELECTED from /company/ link: "${company}"`);
           break;
         }
       }
@@ -657,20 +616,16 @@
         const txt = cleanText(el.textContent);
         if (isGoodCompany(txt)) {
           company = txt;
-          console.log(`[ApplyIQ] company SELECTED from above title: "${company}"`);
           break;
         }
       }
     }
 
     if (!company) {
-      console.log("[ApplyIQ] company: NOT FOUND → 'Unknown Company'");
       company = "Unknown Company";
     }
 
-    console.log(`[ApplyIQ] FINAL: company="${company}" role="${role}"`);
     const companyLogoUrl = extractLogoLinkedIn();
-    console.log(`[ApplyIQ] logo: "${companyLogoUrl ? companyLogoUrl.slice(0, 80) : "null"}"`);
     return buildResult(role, company, companyLogoUrl);
   }
 
@@ -753,10 +708,6 @@
     }
 
     if (action === "apply") {
-      console.log(`[ApplyIQ] apply click detected`);
-      console.log(`[ApplyIQ] apply - extracted company: "${company}"`);
-      console.log(`[ApplyIQ] apply - extracted role: "${role}"`);
-      console.log(`[ApplyIQ] apply - normalized job_link: "${jobLink}"`);
 
       // Check whether the click target has an external href ancestor.
       // LinkedIn's "Easy Apply" stays on-page (modal); external apply goes off-site.
@@ -768,7 +719,6 @@
         // Briefly block navigation, await the Supabase write, then resume
         e.preventDefault();
         await applyJob({ company, role, jobLink, companyLogoUrl });
-        console.log(`[ApplyIQ] apply - save complete, navigation continued to: ${externalAnchor.href}`);
         if (externalAnchor.target === "_blank") {
           window.open(externalAnchor.href, "_blank");
         } else {
@@ -778,7 +728,6 @@
         // Easy Apply (modal) or LinkedIn-internal link — fire-and-forget so
         // LinkedIn's own handlers open the modal unimpeded
         applyJob({ company, role, jobLink, companyLogoUrl });
-        console.log(`[ApplyIQ] apply - save triggered (fire-and-forget), navigation not blocked`);
       }
       return;
     }
