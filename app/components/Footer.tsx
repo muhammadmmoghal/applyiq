@@ -1,4 +1,11 @@
 import Image from "next/image";
+import Link from "next/link";
+
+const FOOTER_LINKS: { label: string; href: string }[] = [
+  { label: "Privacy", href: "/privacy" },
+  { label: "Terms",   href: "#" },
+  { label: "Contact", href: "mailto:muhammadmmoghal@gmail.com" },
+];
 
 export default function Footer() {
   return (
@@ -24,14 +31,14 @@ export default function Footer() {
 
         {/* Links */}
         <div className="flex items-center gap-6">
-          {["Privacy", "Terms", "Contact"].map((label) => (
-            <a
+          {FOOTER_LINKS.map(({ label, href }) => (
+            <Link
               key={label}
-              href="#"
+              href={href}
               className="text-sm text-slate-500 hover:text-slate-200 transition-colors duration-200 font-medium"
             >
               {label}
-            </a>
+            </Link>
           ))}
         </div>
 
