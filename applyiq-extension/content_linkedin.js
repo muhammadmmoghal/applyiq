@@ -254,9 +254,6 @@
       if (!listRes.ok) throw new Error(`List failed: ${listRes.status}`);
       const rows = await listRes.json();
 
-      rows.forEach(r =>
-      );
-
       // ── Match by priority ─────────────────────────────────────────────────
       // a) job_link contains the LinkedIn jobId
       let match       = jobId ? rows.find(r => (r.job_link || "").includes(jobId)) : null;

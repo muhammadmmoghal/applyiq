@@ -257,9 +257,6 @@
       if (!listRes.ok) throw new Error(`List failed: ${listRes.status}`);
       const rows = await listRes.json();
 
-      rows.forEach(r =>
-      );
-
       // Priority matching
       let match       = jobId ? rows.find(r => (r.job_link || "").includes(jobId)) : null;
       let matchReason = match ? `jobId "${jobId}" in job_link` : null;
