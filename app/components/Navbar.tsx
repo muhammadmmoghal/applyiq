@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -114,17 +115,15 @@ export default function Navbar() {
         <div className="max-w-6xl mx-auto px-8 py-3.5 flex items-center justify-between gap-6">
 
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 group shrink-0">
-            <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-blue-700 group-hover:from-blue-400 group-hover:to-blue-600 rounded-lg flex items-center justify-center
-                            transition-all duration-200 shadow-sm shadow-blue-500/30">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M3 12L6 7L9 10L12 5" stroke="white" strokeWidth="2"
-                      strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <span className="text-xl font-bold text-white transition-colors duration-200">
-              Apply<span className="text-blue-400">IQ</span>
-            </span>
+          <Link href="/" className="flex items-center shrink-0">
+            <Image
+              src="/applyiq-logo-full.png"
+              alt="ApplyIQ"
+              width={120}
+              height={36}
+              className="h-9 w-auto object-contain"
+              priority
+            />
           </Link>
 
           {/* Nav links */}
