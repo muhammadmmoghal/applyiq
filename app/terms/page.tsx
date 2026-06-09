@@ -429,7 +429,7 @@ export default function TermsPage() {
                   If you have any questions about these Terms of Service, reach out directly.
                 </p>
                 <a
-                  href="mailto:minimoghal123@gmail.com"
+                  href="mailto:muhammadmmoghal@gmail.com"
                   className="inline-flex items-center gap-2
                              bg-gradient-to-r from-blue-600 to-blue-500
                              hover:from-blue-500 hover:to-cyan-400
@@ -442,7 +442,7 @@ export default function TermsPage() {
                     <rect x="1" y="3" width="12" height="8" rx="1.5" stroke="white" strokeWidth="1.4" />
                     <path d="M1 4l6 4 6-4" stroke="white" strokeWidth="1.4" strokeLinecap="round" />
                   </svg>
-                  minimoghal123@gmail.com
+                  muhammadmmoghal@gmail.com
                 </a>
               </div>
             </FadeUp>
