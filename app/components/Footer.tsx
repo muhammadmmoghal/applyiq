@@ -3,7 +3,7 @@ import Link from "next/link";
 
 const FOOTER_LINKS: { label: string; href: string }[] = [
   { label: "Privacy", href: "/privacy" },
-  { label: "Terms",   href: "#" },
+  { label: "Terms",   href: "/terms" },
   { label: "Contact", href: "mailto:muhammadmmoghal@gmail.com" },
 ];
 
