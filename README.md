@@ -6,7 +6,8 @@ ApplyIQ is a full-stack job application tracking platform that helps job seekers
 
 **Website:** https://applyiq-pi.vercel.app
 
-**Chrome Extension:** Submitted for Chrome Web Store review.
+**Chrome Extension:** https://chromewebstore.google.com/detail/applyiq-save-jobs/flhmkmcofillneadhljpkemmmkgbgnld
+
 
 ---
 
@@ -109,7 +110,7 @@ The browser extension:
 * Dashboard analytics
 * Privacy Policy page
 * Terms of Service page
-* Chrome Web Store submission
+* Chrome Web Store publication
 
 ### In Development
 
