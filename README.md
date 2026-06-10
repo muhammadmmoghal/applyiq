@@ -150,6 +150,6 @@ The browser extension:
 
 **Muhammad Moghal**
 
-Information Systems Student | Data Analytics & Full-Stack Development
+Data Science Student
 
 ApplyIQ was built to simplify job application tracking and eliminate the need for spreadsheets during the internship and full-time job search process.
